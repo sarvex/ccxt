@@ -566,7 +566,10 @@ class ascendex(Exchange):
             status = self.safe_string(market, 'status')
             domain = self.safe_string(market, 'domain')
             active = False
-            if ((status == 'Normal') or (status == 'InternalTrading')) and (domain != 'LeveragedETF'):
+            if (
+                status in ['Normal', 'InternalTrading']
+                and domain != 'LeveragedETF'
+            ):
                 active = True
             spot = settle is None
             swap = not spot
@@ -581,7 +584,7 @@ class ascendex(Exchange):
             quoteId = self.safe_string(parts, 1)
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             if swap:
                 lotSizeFilter = self.safe_value(market, 'lotSizeFilter')
                 minQty = self.safe_number(lotSizeFilter, 'minQty')
@@ -589,7 +592,7 @@ class ascendex(Exchange):
                 priceFilter = self.safe_value(market, 'priceFilter')
                 minPrice = self.safe_number(priceFilter, 'minPrice')
                 maxPrice = self.safe_number(priceFilter, 'maxPrice')
-                symbol = base + '/' + quote + ':' + settle
+                symbol = f'{base}/{quote}:{settle}'
             fee = self.safe_number(market, 'commissionReserveRate')
             marginTradable = self.safe_value(market, 'marginTradable', False)
             result.append({
@@ -787,7 +790,7 @@ class ascendex(Exchange):
             'margin': defaultMethod,
             'swap': 'v2PrivateAccountGroupGetFuturesPosition',
         })
-        if (accountCategory == 'cash') or (accountCategory == 'margin'):
+        if accountCategory in ['cash', 'margin']:
             request['account-category'] = accountCategory
         response = getattr(self, method)(self.extend(request, query))
         #
@@ -1058,10 +1061,7 @@ class ascendex(Exchange):
         defaultLimit = self.safe_integer(options, 'limit', 500)
         if since is not None:
             request['from'] = since
-            if limit is None:
-                limit = defaultLimit
-            else:
-                limit = min(limit, defaultLimit)
+            limit = defaultLimit if limit is None else min(limit, defaultLimit)
             request['to'] = self.sum(since, limit * duration * 1000, 1)
         elif limit is not None:
             request['n'] = limit  # max 500
@@ -1269,9 +1269,8 @@ class ascendex(Exchange):
         filled = self.safe_string_2(order, 'cumFilledQty', 'cumQty')
         id = self.safe_string(order, 'orderId')
         clientOrderId = self.safe_string(order, 'id')
-        if clientOrderId is not None:
-            if len(clientOrderId) < 1:
-                clientOrderId = None
+        if clientOrderId is not None and len(clientOrderId) < 1:
+            clientOrderId = None
         rawTypeLower = self.safe_string_lower(order, 'orderType')
         type = rawTypeLower
         if rawTypeLower is not None:
@@ -1290,13 +1289,9 @@ class ascendex(Exchange):
                 'currency': feeCurrencyCode,
             }
         stopPrice = self.safe_number(order, 'stopPrice')
-        reduceOnly = None
         execInst = self.safe_string(order, 'execInst')
-        if execInst == 'reduceOnly':
-            reduceOnly = True
-        postOnly = None
-        if execInst == 'Post':
-            postOnly = True
+        reduceOnly = True if execInst == 'reduceOnly' else None
+        postOnly = True if execInst == 'Post' else None
         return self.safe_order({
             'info': order,
             'id': id,
@@ -1405,8 +1400,8 @@ class ascendex(Exchange):
             # 'execInst':  # Post for postOnly, ReduceOnly for reduceOnly
             # 'respInst': 'ACK',  # ACK, 'ACCEPT, DONE
         }
-        isMarketOrder = ((type == 'market') or (type == 'stop_market'))
-        isLimitOrder = ((type == 'limit') or (type == 'stop_limit'))
+        isMarketOrder = type in ['market', 'stop_market']
+        isLimitOrder = type in ['limit', 'stop_limit']
         timeInForce = self.safe_string(params, 'timeInForce')
         postOnly = self.is_post_only(isMarketOrder, False, params)
         reduceOnly = self.safe_value(params, 'reduceOnly', False)
@@ -1414,7 +1409,9 @@ class ascendex(Exchange):
         params = self.omit(params, ['timeInForce', 'postOnly', 'reduceOnly', 'stopPrice', 'triggerPrice'])
         if reduceOnly:
             if marketType != 'swap':
-                raise InvalidOrder(self.id + ' createOrder() does not support reduceOnly for ' + marketType + ' orders, reduceOnly orders are supported for perpetuals only')
+                raise InvalidOrder(
+                    f'{self.id} createOrder() does not support reduceOnly for {marketType} orders, reduceOnly orders are supported for perpetuals only'
+                )
             request['execInst'] = 'ReduceOnly'
         if isLimitOrder:
             request['orderPrice'] = self.price_to_precision(symbol, price)
@@ -1521,9 +1518,7 @@ class ascendex(Exchange):
         """
         self.load_markets()
         self.load_accounts()
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         type, query = self.handle_market_type_and_params('fetchOrder', market, params)
         options = self.safe_value(self.options, 'fetchOrder', {})
         accountsByType = self.safe_value(self.options, 'accountsByType', {})
@@ -1897,7 +1892,7 @@ class ascendex(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} cancelOrder() requires a symbol argument')
         self.load_markets()
         self.load_accounts()
         market = self.market(symbol)
@@ -2008,9 +2003,7 @@ class ascendex(Exchange):
         """
         self.load_markets()
         self.load_accounts()
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         type, query = self.handle_market_type_and_params('cancelAllOrders', market, params)
         options = self.safe_value(self.options, 'cancelAllOrders', {})
         accountsByType = self.safe_value(self.options, 'accountsByType', {})
@@ -2035,42 +2028,7 @@ class ascendex(Exchange):
                 request['category'] = accountCategory
         else:
             request['account-category'] = accountCategory
-        response = getattr(self, method)(self.extend(request, query))
-        #
-        # AccountCategoryDeleteOrderAll
-        #
-        #     {
-        #         "code": 0,
-        #         "data": {
-        #             "ac": "CASH",
-        #             "accountId": "cshQtyfq8XLAA9kcf19h8bXHbAwwoqDo",
-        #             "action": "cancel-all",
-        #             "info": {
-        #                 "id":  "2bmYvi7lyTrneMzpcJcf2D7Pe9V1P9wy",
-        #                 "orderId": "",
-        #                 "orderType": "NULL_VAL",
-        #                 "symbol": "",
-        #                 "timestamp": 1574118495462
-        #             },
-        #             "status": "Ack"
-        #         }
-        #     }
-        #
-        # AccountGroupDeleteFuturesOrderAll
-        #
-        #     {
-        #         "code": 0,
-        #         "data": {
-        #             "ac": "FUTURES",
-        #             "accountId": "fut2ODPhGiY71Pl4vtXnOZ00ssgD7QGn",
-        #             "action": "cancel-all",
-        #             "info": {
-        #                 "symbol":"BTC-PERP"
-        #             }
-        #         }
-        #     }
-        #
-        return response
+        return getattr(self, method)(self.extend(request, query))
 
     def parse_deposit_address(self, depositAddress, currency=None):
         #
@@ -2175,7 +2133,9 @@ class ascendex(Exchange):
             if chainName is None:
                 chainNames = list(addressesByChainName.keys())
                 chains = ', '.join(chainNames)
-                raise ArgumentsRequired(self.id + ' fetchDepositAddress() returned more than one address, a chainName parameter is required, one of ' + chains)
+                raise ArgumentsRequired(
+                    f'{self.id} fetchDepositAddress() returned more than one address, a chainName parameter is required, one of {chains}'
+                )
             address = self.safe_value(addressesByChainName, chainName, {})
         else:
             # first address
@@ -2385,9 +2345,7 @@ class ascendex(Exchange):
         #
         data = self.safe_value(response, 'data', {})
         position = self.safe_value(data, 'contracts', [])
-        result = []
-        for i in range(0, len(position)):
-            result.append(self.parse_position(position[i]))
+        result = [self.parse_position(position[i]) for i in range(0, len(position))]
         symbols = self.market_symbols(symbols)
         return self.filter_by_array(result, 'symbol', symbols, False)
 
@@ -2593,14 +2551,14 @@ class ascendex(Exchange):
         :returns dict: response from the exchange
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' setLeverage() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} setLeverage() requires a symbol argument')
         if (leverage < 1) or (leverage > 100):
-            raise BadRequest(self.id + ' leverage should be between 1 and 100')
+            raise BadRequest(f'{self.id} leverage should be between 1 and 100')
         self.load_markets()
         self.load_accounts()
         market = self.market(symbol)
         if market['type'] != 'future':
-            raise BadSymbol(self.id + ' setLeverage() supports futures contracts only')
+            raise BadSymbol(f'{self.id} setLeverage() supports futures contracts only')
         account = self.safe_value(self.accounts, 0, {})
         accountGroup = self.safe_string(account, 'id')
         request = {
@@ -2621,8 +2579,10 @@ class ascendex(Exchange):
         marginMode = marginMode.lower()
         if marginMode == 'cross':
             marginMode = 'crossed'
-        if marginMode != 'isolated' and marginMode != 'crossed':
-            raise BadRequest(self.id + ' setMarginMode() marginMode argument should be isolated or cross')
+        if marginMode not in ['isolated', 'crossed']:
+            raise BadRequest(
+                f'{self.id} setMarginMode() marginMode argument should be isolated or cross'
+            )
         self.load_markets()
         self.load_accounts()
         market = self.market(symbol)
@@ -2634,7 +2594,7 @@ class ascendex(Exchange):
             'marginMode': marginMode,
         }
         if market['type'] != 'future':
-            raise BadSymbol(self.id + ' setMarginMode() supports futures contracts only')
+            raise BadSymbol(f'{self.id} setMarginMode() supports futures contracts only')
         return self.v2PrivateAccountGroupPostFuturesMarginType(self.extend(request, params))
 
     def fetch_leverage_tiers(self, symbols=None, params={}):
@@ -2744,7 +2704,9 @@ class ascendex(Exchange):
         fromId = self.safe_string(accountsByType, fromAccount, fromAccount)
         toId = self.safe_string(accountsByType, toAccount, toAccount)
         if fromId != 'cash' and toId != 'cash':
-            raise ExchangeError(self.id + ' transfer() only supports direct balance transfer between spot and future, spot and margin')
+            raise ExchangeError(
+                f'{self.id} transfer() only supports direct balance transfer between spot and future, spot and margin'
+            )
         request = {
             'account-group': accountGroup,
             'amount': amount,
@@ -2786,9 +2748,7 @@ class ascendex(Exchange):
         }
 
     def parse_transfer_status(self, status):
-        if status == 0:
-            return 'ok'
-        return 'failed'
+        return 'ok' if status == 0 else 'failed'
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         version = api[0]
@@ -2802,9 +2762,9 @@ class ascendex(Exchange):
         request = self.implode_params(path, params)
         url += '/api/pro/'
         if version == 'v2':
-            request = version + '/' + request
+            request = f'{version}/{request}'
         else:
-            url += version + '/'
+            url += f'{version}/'
         if accountCategory:
             url += self.implode_params('{account-category}/', params)
         params = self.omit(params, 'account-category')
@@ -2819,11 +2779,11 @@ class ascendex(Exchange):
         params = self.omit(params, self.extract_params(path))
         if access == 'public':
             if params:
-                url += '?' + self.urlencode(params)
+                url += f'?{self.urlencode(params)}'
         else:
             self.check_required_credentials()
             timestamp = str(self.milliseconds())
-            payload = timestamp + '+' + request
+            payload = f'{timestamp}+{request}'
             hmac = self.hmac(self.encode(payload), self.encode(self.secret), hashlib.sha256, 'base64')
             headers = {
                 'x-auth-key': self.apiKey,
@@ -2832,7 +2792,7 @@ class ascendex(Exchange):
             }
             if method == 'GET':
                 if params:
-                    url += '?' + self.urlencode(params)
+                    url += f'?{self.urlencode(params)}'
             else:
                 headers['Content-Type'] = 'application/json'
                 body = self.json(params)
@@ -2852,7 +2812,7 @@ class ascendex(Exchange):
         message = self.safe_string(response, 'message')
         error = (code is not None) and (code != '0')
         if error or (message is not None):
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], code, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)

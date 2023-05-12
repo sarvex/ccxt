@@ -229,56 +229,66 @@ class bitbns(Exchange):
             costLimits = self.safe_value(marketLimits, 'cost', {})
             usdt = (quoteId == 'USDT')
             # INR markets don't need a _INR prefix
-            uppercaseId = (baseId + '_' + quoteId) if usdt else baseId
-            result.append({
-                'id': id,
-                'uppercaseId': uppercaseId,
-                'symbol': base + '/' + quote,
-                'base': base,
-                'quote': quote,
-                'settle': None,
-                'baseId': baseId,
-                'quoteId': quoteId,
-                'settleId': None,
-                'type': 'spot',
-                'spot': True,
-                'margin': False,
-                'swap': False,
-                'future': False,
-                'option': False,
-                'active': None,
-                'contract': False,
-                'linear': None,
-                'inverse': None,
-                'contractSize': None,
-                'expiry': None,
-                'expiryDatetime': None,
-                'strike': None,
-                'optionType': None,
-                'precision': {
-                    'amount': self.parse_number(self.parse_precision(self.safe_string(marketPrecision, 'amount'))),
-                    'price': self.parse_number(self.parse_precision(self.safe_string(marketPrecision, 'price'))),
-                },
-                'limits': {
-                    'leverage': {
-                        'min': None,
-                        'max': None,
+            uppercaseId = f'{baseId}_{quoteId}' if usdt else baseId
+            result.append(
+                {
+                    'id': id,
+                    'uppercaseId': uppercaseId,
+                    'symbol': f'{base}/{quote}',
+                    'base': base,
+                    'quote': quote,
+                    'settle': None,
+                    'baseId': baseId,
+                    'quoteId': quoteId,
+                    'settleId': None,
+                    'type': 'spot',
+                    'spot': True,
+                    'margin': False,
+                    'swap': False,
+                    'future': False,
+                    'option': False,
+                    'active': None,
+                    'contract': False,
+                    'linear': None,
+                    'inverse': None,
+                    'contractSize': None,
+                    'expiry': None,
+                    'expiryDatetime': None,
+                    'strike': None,
+                    'optionType': None,
+                    'precision': {
+                        'amount': self.parse_number(
+                            self.parse_precision(
+                                self.safe_string(marketPrecision, 'amount')
+                            )
+                        ),
+                        'price': self.parse_number(
+                            self.parse_precision(
+                                self.safe_string(marketPrecision, 'price')
+                            )
+                        ),
                     },
-                    'amount': {
-                        'min': self.safe_number(amountLimits, 'min'),
-                        'max': self.safe_number(amountLimits, 'max'),
+                    'limits': {
+                        'leverage': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'amount': {
+                            'min': self.safe_number(amountLimits, 'min'),
+                            'max': self.safe_number(amountLimits, 'max'),
+                        },
+                        'price': {
+                            'min': self.safe_number(priceLimits, 'min'),
+                            'max': self.safe_number(priceLimits, 'max'),
+                        },
+                        'cost': {
+                            'min': self.safe_number(costLimits, 'min'),
+                            'max': self.safe_number(costLimits, 'max'),
+                        },
                     },
-                    'price': {
-                        'min': self.safe_number(priceLimits, 'min'),
-                        'max': self.safe_number(priceLimits, 'max'),
-                    },
-                    'cost': {
-                        'min': self.safe_number(costLimits, 'min'),
-                        'max': self.safe_number(costLimits, 'max'),
-                    },
-                },
-                'info': market,
-            })
+                    'info': market,
+                }
+            )
         return result
 
     def fetch_order_book(self, symbol, limit=None, params={}):
@@ -439,7 +449,7 @@ class bitbns(Exchange):
                 code = self.safe_currency_code(currencyId)
                 account = self.account()
                 account['free'] = self.safe_string(data, key)
-                account['used'] = self.safe_string(data, 'inorder' + currencyId)
+                account['used'] = self.safe_string(data, f'inorder{currencyId}')
                 result[code] = account
         return self.safe_balance(result)
 
@@ -540,13 +550,7 @@ class bitbns(Exchange):
         status = self.parse_order_status(self.safe_string(order, 'status'))
         side = self.safe_string_lower(order, 'side')
         feeCost = self.safe_number(order, 'fee')
-        fee = None
-        if feeCost is not None:
-            feeCurrencyCode = None
-            fee = {
-                'cost': feeCost,
-                'currency': feeCurrencyCode,
-            }
+        fee = {'cost': feeCost, 'currency': None} if feeCost is not None else None
         return self.safe_order({
             'info': order,
             'id': id,
@@ -583,8 +587,8 @@ class bitbns(Exchange):
         :param dict params: extra parameters specific to the bitbns api endpoint
         :returns dict: an `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
-        if type != 'limit' and type != 'market':
-            raise ExchangeError(self.id + ' allows limit and market orders only')
+        if type not in ['limit', 'market']:
+            raise ExchangeError(f'{self.id} allows limit and market orders only')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -601,11 +605,9 @@ class bitbns(Exchange):
         method = 'v2PostOrders'
         if type == 'limit':
             request['rate'] = self.price_to_precision(symbol, price)
-        elif type == 'market':
+        else:
             method = 'v1PostPlaceMarketOrderQntySymbol'
             request['market'] = market['quoteId']
-        else:
-            raise ExchangeError(self.id + ' allows limit and market orders only')
         response = getattr(self, method)(self.extend(request, params))
         #
         #     {
@@ -627,7 +629,7 @@ class bitbns(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} cancelOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         quoteSide = 'usdtcancelOrder' if (market['quoteId'] == 'USDT') else 'cancelOrder'
@@ -647,7 +649,7 @@ class bitbns(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -694,7 +696,9 @@ class bitbns(Exchange):
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOpenOrders() requires a symbol argument'
+            )
         self.load_markets()
         market = self.market(symbol)
         quoteSide = 'usdtListOpenOrders' if (market['quoteId'] == 'USDT') else 'listOpenOrders'
@@ -810,7 +814,9 @@ class bitbns(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html#trade-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a symbol argument'
+            )
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -874,7 +880,7 @@ class bitbns(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html?#public-trades>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchTrades() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchTrades() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -901,7 +907,9 @@ class bitbns(Exchange):
         :returns [dict]: a list of `transaction structures <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
         """
         if code is None:
-            raise ArgumentsRequired(self.id + ' fetchDeposits() requires a currency code argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchDeposits() requires a currency code argument'
+            )
         self.load_markets()
         currency = self.currency(code)
         request = {
@@ -945,7 +953,9 @@ class bitbns(Exchange):
         :returns [dict]: a list of `transaction structures <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
         """
         if code is None:
-            raise ArgumentsRequired(self.id + ' fetchWithdrawals() requires a currency code argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchWithdrawals() requires a currency code argument'
+            )
         self.load_markets()
         currency = self.currency(code)
         request = {
@@ -1016,9 +1026,7 @@ class bitbns(Exchange):
         # status = self.parse_transaction_status_by_type(self.safe_string(transaction, 'status'), type)
         amount = self.safe_number(transaction, 'amount')
         feeCost = self.safe_number(transaction, 'fee')
-        fee = None
-        if feeCost is not None:
-            fee = {'currency': code, 'cost': feeCost}
+        fee = {'currency': code, 'cost': feeCost} if feeCost is not None else None
         return {
             'info': transaction,
             'id': None,
@@ -1080,25 +1088,24 @@ class bitbns(Exchange):
         return self.milliseconds()
 
     def sign(self, path, api='www', method='GET', params={}, headers=None, body=None):
-        if not (api in self.urls['api']):
-            raise ExchangeError(self.id + ' does not have a testnet/sandbox URL for ' + api + ' endpoints')
+        if api not in self.urls['api']:
+            raise ExchangeError(
+                f'{self.id} does not have a testnet/sandbox URL for {api} endpoints'
+            )
         if api != 'www':
             self.check_required_credentials()
             headers = {
                 'X-BITBNS-APIKEY': self.apiKey,
             }
         baseUrl = self.implode_hostname(self.urls['api'][api])
-        url = baseUrl + '/' + self.implode_params(path, params)
+        url = f'{baseUrl}/{self.implode_params(path, params)}'
         query = self.omit(params, self.extract_params(path))
         nonce = str(self.nonce())
         if method == 'GET':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         elif method == 'POST':
-            if query:
-                body = self.json(query)
-            else:
-                body = '{}'
+            body = self.json(query) if query else '{}'
             auth = {
                 'timeStamp_nonce': nonce,
                 'body': body,
@@ -1121,7 +1128,7 @@ class bitbns(Exchange):
         message = self.safe_string(response, 'msg')
         error = (code is not None) and (code != '200') and (code != '204')
         if error or (message is not None):
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], code, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)

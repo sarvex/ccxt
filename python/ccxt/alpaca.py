@@ -252,7 +252,7 @@ class alpaca(Exchange):
             quoteId = self.safe_string(parts, 1)
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             status = self.safe_string(asset, 'status')
             active = (status == 'active')
             minAmount = self.safe_number(asset, 'min_order_size')
@@ -512,7 +512,9 @@ class alpaca(Exchange):
             if type.find('limit') >= 0:
                 newType = 'stop_limit'
             else:
-                raise NotSupported(self.id + ' createOrder() does not support stop orders for ' + type + ' orders, only stop_limit orders are supported')
+                raise NotSupported(
+                    f'{self.id} createOrder() does not support stop orders for {type} orders, only stop_limit orders are supported'
+                )
             request['stop_price'] = self.price_to_precision(symbol, triggerPrice)
             request['type'] = newType
         if type.find('limit') >= 0:
@@ -613,9 +615,7 @@ class alpaca(Exchange):
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         self.load_markets()
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         orders = self.privateGetOrders(params)
         return self.parse_orders(orders, market, since, limit)
 
@@ -664,12 +664,14 @@ class alpaca(Exchange):
         alpacaStatus = self.safe_string(order, 'status')
         status = self.parse_order_status(alpacaStatus)
         feeValue = self.safe_string(order, 'commission')
-        fee = None
-        if feeValue is not None:
-            fee = {
+        fee = (
+            {
                 'cost': feeValue,
                 'currency': 'USD',
             }
+            if feeValue is not None
+            else None
+        )
         orderType = self.safe_string(order, 'order_type')
         if orderType.find('limit') >= 0:
             # might be limit or stop-limit
@@ -760,17 +762,16 @@ class alpaca(Exchange):
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         versions = self.safe_value(self.options, 'versions')
         version = self.safe_string(versions, api)
-        endpoint = '/' + self.implode_params(path, params)
+        endpoint = f'/{self.implode_params(path, params)}'
         url = self.implode_params(self.urls['api'][api], {'version': version})
         url = self.implode_hostname(url)
         headers = headers if (headers is not None) else {}
         if api == 'private':
             headers['APCA-API-KEY-ID'] = self.apiKey
             headers['APCA-API-SECRET-KEY'] = self.secret
-        query = self.omit(params, self.extract_params(path))
-        if query:
-            if (method == 'GET') or (method == 'DELETE'):
-                endpoint += '?' + self.urlencode(query)
+        if query := self.omit(params, self.extract_params(path)):
+            if method in ['GET', 'DELETE']:
+                endpoint += f'?{self.urlencode(query)}'
             else:
                 body = self.json(query)
                 headers['Content-Type'] = 'application/json'
@@ -784,7 +785,7 @@ class alpaca(Exchange):
         #     "code": 40110000,
         #     "message": "request is not authorized"
         # }
-        feedback = self.id + ' ' + body
+        feedback = f'{self.id} {body}'
         errorCode = self.safe_string(response, 'code')
         if code is not None:
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)

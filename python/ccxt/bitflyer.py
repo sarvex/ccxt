@@ -115,7 +115,7 @@ class bitflyer(Exchange):
         })
 
     def parse_expiry_date(self, expiry):
-        day = expiry[0:2]
+        day = expiry[:2]
         monthName = expiry[2:5]
         year = expiry[5:9]
         months = {
@@ -133,7 +133,7 @@ class bitflyer(Exchange):
             'DEC': '12',
         }
         month = self.safe_string(months, monthName)
-        return self.parse8601(year + '-' + month + '-' + day + 'T00:00:00Z')
+        return self.parse8601(f'{year}-{month}-{day}T00:00:00Z')
 
     def safe_market(self, marketId=None, market=None, delimiter=None, marketType=None):
         # Bitflyer has a different type of conflict in markets, because
@@ -206,23 +206,22 @@ class bitflyer(Exchange):
                     # no alias:
                     # {product_code: 'BTCJPY11MAR2022', market_type: 'Futures'}
                     # TODO self will break if there are products with 4 chars
-                    baseId = id[0:3]
+                    baseId = id[:3]
                     quoteId = id[3:6]
                     # last 9 chars are expiry date
                     expiryDate = id[-9:]
-                    expiry = self.parse_expiry_date(expiryDate)
                 else:
                     splitAlias = alias.split('_')
                     currencyIds = self.safe_string(splitAlias, 0)
-                    baseId = currencyIds[0:-3]
+                    baseId = currencyIds[:-3]
                     quoteId = currencyIds[-3:]
                     splitId = id.split(currencyIds)
                     expiryDate = self.safe_string(splitId, 1)
-                    expiry = self.parse_expiry_date(expiryDate)
+                expiry = self.parse_expiry_date(expiryDate)
                 type = 'future'
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             taker = self.fees['trading']['taker']
             maker = self.fees['trading']['maker']
             contract = swap or future
@@ -230,9 +229,9 @@ class bitflyer(Exchange):
                 maker = 0.0
                 taker = 0.0
                 settle = 'JPY'
-                symbol = symbol + ':' + settle
+                symbol = f'{symbol}:{settle}'
                 if future:
-                    symbol = symbol + '-' + self.yymmdd(expiry)
+                    symbol = f'{symbol}-{self.yymmdd(expiry)}'
             result.append({
                 'id': id,
                 'symbol': symbol,
@@ -410,12 +409,11 @@ class bitflyer(Exchange):
         #
         #
         side = self.safe_string_lower(trade, 'side')
-        if side is not None:
-            if len(side) < 1:
-                side = None
+        if side is not None and len(side) < 1:
+            side = None
         order = None
         if side is not None:
-            id = side + '_child_order_acceptance_id'
+            id = f'{side}_child_order_acceptance_id'
             if id in trade:
                 order = trade[id]
         if order is None:
@@ -522,7 +520,9 @@ class bitflyer(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} cancelOrder() requires a `symbol` argument'
+            )
         self.load_markets()
         request = {
             'product_code': self.market_id(symbol),
@@ -595,7 +595,9 @@ class bitflyer(Exchange):
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOrders() requires a `symbol` argument'
+            )
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -644,12 +646,12 @@ class bitflyer(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a `symbol` argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a `symbol` argument')
         orders = self.fetch_orders(symbol)
         ordersById = self.index_by(orders, 'id')
         if id in ordersById:
             return ordersById[id]
-        raise OrderNotFound(self.id + ' No order found with id ' + id)
+        raise OrderNotFound(f'{self.id} No order found with id {id}')
 
     def fetch_my_trades(self, symbol=None, since=None, limit=None, params={}):
         """
@@ -661,7 +663,9 @@ class bitflyer(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html#trade-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a `symbol` argument'
+            )
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -680,31 +684,14 @@ class bitflyer(Exchange):
         :returns [dict]: a list of `position structure <https://docs.ccxt.com/en/latest/manual.html#position-structure>`
         """
         if symbols is None:
-            raise ArgumentsRequired(self.id + ' fetchPositions() requires a `symbols` argument, exactly one symbol in an array')
+            raise ArgumentsRequired(
+                f'{self.id} fetchPositions() requires a `symbols` argument, exactly one symbol in an array'
+            )
         self.load_markets()
         request = {
             'product_code': self.market_ids(symbols),
         }
-        response = self.privateGetpositions(self.extend(request, params))
-        #
-        #     [
-        #         {
-        #             "product_code": "FX_BTC_JPY",
-        #             "side": "BUY",
-        #             "price": 36000,
-        #             "size": 10,
-        #             "commission": 0,
-        #             "swap_point_accumulate": -35,
-        #             "require_collateral": 120000,
-        #             "open_date": "2015-11-03T10:04:45.011",
-        #             "leverage": 3,
-        #             "pnl": 965,
-        #             "sfd": -0.5
-        #         }
-        #     ]
-        #
-        # todo unify parsePosition/parsePositions
-        return response
+        return self.privateGetpositions(self.extend(request, params))
 
     def withdraw(self, code, amount, address, tag=None, params={}):
         """
@@ -718,8 +705,10 @@ class bitflyer(Exchange):
         """
         self.check_address(address)
         self.load_markets()
-        if code != 'JPY' and code != 'USD' and code != 'EUR':
-            raise ExchangeError(self.id + ' allows withdrawing JPY, USD, EUR only, ' + code + ' is not supported')
+        if code not in ['JPY', 'USD', 'EUR']:
+            raise ExchangeError(
+                f'{self.id} allows withdrawing JPY, USD, EUR only, {code} is not supported'
+            )
         currency = self.currency(code)
         request = {
             'currency_code': currency['id'],
@@ -744,10 +733,8 @@ class bitflyer(Exchange):
         :returns [dict]: a list of `transaction structures <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
         """
         self.load_markets()
-        currency = None
         request = {}
-        if code is not None:
-            currency = self.currency(code)
+        currency = self.currency(code) if code is not None else None
         if limit is not None:
             request['count'] = limit  # default 100
         response = self.privateGetGetcoinins(self.extend(request, params))
@@ -777,10 +764,8 @@ class bitflyer(Exchange):
         :returns [dict]: a list of `transaction structures <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
         """
         self.load_markets()
-        currency = None
         request = {}
-        if code is not None:
-            currency = self.currency(code)
+        currency = self.currency(code) if code is not None else None
         if limit is not None:
             request['count'] = limit  # default 100
         response = self.privateGetGetcoinouts(self.extend(request, params))
@@ -895,23 +880,21 @@ class bitflyer(Exchange):
         }
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        request = '/' + self.version + '/'
+        request = f'/{self.version}/'
         if api == 'private':
             request += 'me/'
         request += path
-        if method == 'GET':
-            if params:
-                request += '?' + self.urlencode(params)
+        if method == 'GET' and params:
+            request += f'?{self.urlencode(params)}'
         baseUrl = self.implode_hostname(self.urls['api']['rest'])
         url = baseUrl + request
         if api == 'private':
             self.check_required_credentials()
             nonce = str(self.nonce())
             auth = ''.join([nonce, method, request])
-            if params:
-                if method != 'GET':
-                    body = self.json(params)
-                    auth += body
+            if params and method != 'GET':
+                body = self.json(params)
+                auth += body
             headers = {
                 'ACCESS-KEY': self.apiKey,
                 'ACCESS-TIMESTAMP': nonce,

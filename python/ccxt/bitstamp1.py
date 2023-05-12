@@ -131,7 +131,9 @@ class bitstamp1(Exchange):
         :returns dict: A dictionary of `order book structures <https://docs.ccxt.com/en/latest/manual.html#order-book-structure>` indexed by market symbols
         """
         if symbol != 'BTC/USD':
-            raise ExchangeError(self.id + ' ' + self.version + " fetchOrderBook doesn't support " + symbol + ', use it for BTC/USD only')
+            raise ExchangeError(
+                f"{self.id} {self.version} fetchOrderBook doesn't support {symbol}, use it for BTC/USD only"
+            )
         self.load_markets()
         orderbook = self.publicGetOrderBook(params)
         timestamp = self.safe_timestamp(orderbook, 'timestamp')
@@ -188,7 +190,9 @@ class bitstamp1(Exchange):
         :returns dict: a `ticker structure <https://docs.ccxt.com/en/latest/manual.html#ticker-structure>`
         """
         if symbol != 'BTC/USD':
-            raise ExchangeError(self.id + ' ' + self.version + " fetchTicker doesn't support " + symbol + ', use it for BTC/USD only')
+            raise ExchangeError(
+                f"{self.id} {self.version} fetchTicker doesn't support {symbol}, use it for BTC/USD only"
+            )
         self.load_markets()
         market = self.market(symbol)
         ticker = self.publicGetTicker(params)
@@ -242,7 +246,9 @@ class bitstamp1(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html?#public-trades>`
         """
         if symbol != 'BTC/USD':
-            raise BadSymbol(self.id + ' ' + self.version + " fetchTrades doesn't support " + symbol + ', use it for BTC/USD only')
+            raise BadSymbol(
+                f"{self.id} {self.version} fetchTrades doesn't support {symbol}, use it for BTC/USD only"
+            )
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -259,9 +265,9 @@ class bitstamp1(Exchange):
             currency = self.currency(code)
             currencyId = currency['id']
             account = self.account()
-            account['free'] = self.safe_string(response, currencyId + '_available')
-            account['used'] = self.safe_string(response, currencyId + '_reserved')
-            account['total'] = self.safe_string(response, currencyId + '_balance')
+            account['free'] = self.safe_string(response, f'{currencyId}_available')
+            account['used'] = self.safe_string(response, f'{currencyId}_reserved')
+            account['total'] = self.safe_string(response, f'{currencyId}_balance')
             result[code] = account
         return self.safe_balance(result)
 
@@ -286,11 +292,11 @@ class bitstamp1(Exchange):
         :returns dict: an `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if type != 'limit':
-            raise ExchangeError(self.id + ' ' + self.version + ' accepts limit orders only')
+            raise ExchangeError(f'{self.id} {self.version} accepts limit orders only')
         if symbol != 'BTC/USD':
-            raise ExchangeError(self.id + ' v1 supports BTC/USD orders only')
+            raise ExchangeError(f'{self.id} v1 supports BTC/USD orders only')
         self.load_markets()
-        method = 'privatePost' + self.capitalize(side)
+        method = f'privatePost{self.capitalize(side)}'
         request = {
             'amount': amount,
             'price': price,
@@ -339,9 +345,7 @@ class bitstamp1(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html#trade-structure>`
         """
         self.load_markets()
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         pair = market['id'] if market else 'all'
         request = {
             'id': pair,
@@ -354,7 +358,7 @@ class bitstamp1(Exchange):
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             nonce = str(self.nonce())
@@ -376,4 +380,4 @@ class bitstamp1(Exchange):
             return
         status = self.safe_string(response, 'status')
         if status == 'error':
-            raise ExchangeError(self.id + ' ' + self.json(response))
+            raise ExchangeError(f'{self.id} {self.json(response)}')

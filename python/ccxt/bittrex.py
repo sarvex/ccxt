@@ -329,54 +329,62 @@ class bittrex(Exchange):
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
             status = self.safe_string(market, 'status')
-            result.append({
-                'id': self.safe_string(market, 'symbol'),
-                'symbol': base + '/' + quote,
-                'base': base,
-                'quote': quote,
-                'settle': None,
-                'baseId': baseId,
-                'quoteId': quoteId,
-                'settleId': None,
-                'type': 'spot',
-                'spot': True,
-                'margin': False,
-                'swap': False,
-                'future': False,
-                'option': False,
-                'active': (status == 'ONLINE'),
-                'contract': False,
-                'linear': None,
-                'inverse': None,
-                'contractSize': None,
-                'expiry': None,
-                'expiryDatetime': None,
-                'strike': None,
-                'optionType': None,
-                'precision': {
-                    'amount': self.parse_number('1e-8'),  # seems exchange has same amount-precision across all pairs in UI too. This is same as 'minTradeSize' digits after dot
-                    'price': self.parse_number(self.parse_precision(self.safe_string(market, 'precision'))),
-                },
-                'limits': {
-                    'leverage': {
-                        'min': None,
-                        'max': None,
+            result.append(
+                {
+                    'id': self.safe_string(market, 'symbol'),
+                    'symbol': f'{base}/{quote}',
+                    'base': base,
+                    'quote': quote,
+                    'settle': None,
+                    'baseId': baseId,
+                    'quoteId': quoteId,
+                    'settleId': None,
+                    'type': 'spot',
+                    'spot': True,
+                    'margin': False,
+                    'swap': False,
+                    'future': False,
+                    'option': False,
+                    'active': status == 'ONLINE',
+                    'contract': False,
+                    'linear': None,
+                    'inverse': None,
+                    'contractSize': None,
+                    'expiry': None,
+                    'expiryDatetime': None,
+                    'strike': None,
+                    'optionType': None,
+                    'precision': {
+                        'amount': self.parse_number(
+                            '1e-8'
+                        ),  # seems exchange has same amount-precision across all pairs in UI too. This is same as 'minTradeSize' digits after dot
+                        'price': self.parse_number(
+                            self.parse_precision(
+                                self.safe_string(market, 'precision')
+                            )
+                        ),
                     },
-                    'amount': {
-                        'min': self.safe_number(market, 'minTradeSize'),
-                        'max': None,
+                    'limits': {
+                        'leverage': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'amount': {
+                            'min': self.safe_number(market, 'minTradeSize'),
+                            'max': None,
+                        },
+                        'price': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'cost': {
+                            'min': None,
+                            'max': None,
+                        },
                     },
-                    'price': {
-                        'min': None,
-                        'max': None,
-                    },
-                    'cost': {
-                        'min': None,
-                        'max': None,
-                    },
-                },
-                'info': market,
-            })
+                    'info': market,
+                }
+            )
         return result
 
     def parse_balance(self, response):
@@ -417,8 +425,10 @@ class bittrex(Exchange):
             'marketSymbol': market['id'],
         }
         if limit is not None:
-            if (limit != 1) and (limit != 25) and (limit != 500):
-                raise BadRequest(self.id + ' fetchOrderBook() limit argument must be None, 1, 25 or 500, default is 25')
+            if limit not in [1, 25, 500]:
+                raise BadRequest(
+                    f'{self.id} fetchOrderBook() limit argument must be None, 1, 25 or 500, default is 25'
+                )
             request['depth'] = limit
         response = self.publicGetMarketsMarketSymbolOrderbook(self.extend(request, params))
         #
@@ -897,13 +907,11 @@ class bittrex(Exchange):
                     method = 'publicGetMarketsMarketSymbolCandlesCandleIntervalHistoricalYearMonth'
                     request['year'] = sinceYear
                     request['month'] = sinceMonth
-            else:
-                # if the since argument is beyond 1 day into the past
-                if difference > 86400000:
-                    method = 'publicGetMarketsMarketSymbolCandlesCandleIntervalHistoricalYearMonthDay'
-                    request['year'] = sinceYear
-                    request['month'] = sinceMonth
-                    request['day'] = sinceDay
+            elif difference > 86400000:
+                method = 'publicGetMarketsMarketSymbolCandlesCandleIntervalHistoricalYearMonthDay'
+                request['year'] = sinceYear
+                request['month'] = sinceMonth
+                request['day'] = sinceDay
         response = getattr(self, method)(self.extend(request, params))
         #
         #     [
@@ -930,9 +938,7 @@ class bittrex(Exchange):
         if symbol is not None:
             market = self.market(symbol)
             request['marketSymbol'] = market['id']
-        method = 'privateGetOrdersOpen'
-        if stop:
-            method = 'privateGetConditionalOrdersOpen'
+        method = 'privateGetConditionalOrdersOpen' if stop else 'privateGetOrdersOpen'
         query = self.omit(params, 'stop')
         response = getattr(self, method)(self.extend(request, query))
         #
@@ -995,9 +1001,7 @@ class bittrex(Exchange):
             'orderId': id,
         }
         response = self.privateGetOrdersOrderIdExecutions(self.extend(request, params))
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+        market = self.market(symbol) if symbol is not None else None
         return self.parse_trades(response, market, since, limit)
 
     def create_order(self, symbol, type, side, amount, price=None, params={}):

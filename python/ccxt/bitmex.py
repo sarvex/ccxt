@@ -403,7 +403,7 @@ class bitmex(Exchange):
             future = False
             prediction = False
             index = False
-            symbol = base + '/' + quote + ':' + settle
+            symbol = f'{base}/{quote}:{settle}'
             expiryDatetime = self.safe_string(market, 'expiry')
             expiry = self.parse8601(expiryDatetime)
             inverse = self.safe_value(market, 'isInverse')
@@ -418,7 +418,7 @@ class bitmex(Exchange):
             elif expiry is not None:
                 future = True
                 type = 'future'
-                symbol = symbol + '-' + self.yymmdd(expiry)
+                symbol = f'{symbol}-{self.yymmdd(expiry)}'
             else:
                 index = True
                 type = 'index'
@@ -547,7 +547,7 @@ class bitmex(Exchange):
             if code != 'USDT':
                 # tmp fix until self PR gets merged
                 # https://github.com/ccxt/ccxt/pull/15311
-                symbol = code + '_USDT'
+                symbol = f'{code}_USDT'
                 market = self.safe_market(symbol)
                 info = self.safe_value(market, 'info', {})
                 multiplier = self.safe_string(info, 'underlyingToPositionMultiplier')
@@ -679,7 +679,7 @@ class bitmex(Exchange):
         numResults = len(response)
         if numResults == 1:
             return response[0]
-        raise OrderNotFound(self.id + ': The order ' + id + ' not found.')
+        raise OrderNotFound(f'{self.id}: The order {id} not found.')
 
     def fetch_orders(self, symbol=None, since=None, limit=None, params={}):
         """
@@ -934,9 +934,7 @@ class bitmex(Exchange):
         :returns dict: a `ledger structure <https://docs.ccxt.com/en/latest/manual.html#ledger-structure>`
         """
         self.load_markets()
-        currency = None
-        if code is not None:
-            currency = self.currency(code)
+        currency = self.currency(code) if code is not None else None
         request = {
             # 'start': 123,
         }
@@ -993,9 +991,7 @@ class bitmex(Exchange):
             request['count'] = limit
         response = self.privateGetUserWalletHistory(self.extend(request, params))
         transactions = self.filter_by_array(response, 'transactType', ['Withdrawal', 'Deposit'], False)
-        currency = None
-        if code is not None:
-            currency = self.currency(code)
+        currency = self.currency(code) if code is not None else None
         return self.parse_transactions(transactions, currency, since, limit)
 
     def parse_transaction_status(self, status):
@@ -1087,7 +1083,7 @@ class bitmex(Exchange):
         tickers = self.fetch_tickers([market['symbol']], params)
         ticker = self.safe_value(tickers, market['symbol'])
         if ticker is None:
-            raise BadSymbol(self.id + ' fetchTicker() symbol ' + symbol + ' not found')
+            raise BadSymbol(f'{self.id} fetchTicker() symbol {symbol} not found')
         return ticker
 
     def fetch_tickers(self, symbols=None, params={}):
@@ -1632,9 +1628,9 @@ class bitmex(Exchange):
         timeInForce = self.parse_time_in_force(self.safe_string(order, 'timeInForce'))
         stopPrice = self.safe_number(order, 'stopPx')
         execInst = self.safe_string(order, 'execInst')
-        postOnly = None
-        if execInst is not None:
-            postOnly = (execInst == 'ParticipateDoNotInitiate')
+        postOnly = (
+            None if execInst is None else (execInst == 'ParticipateDoNotInitiate')
+        )
         return self.safe_order({
             'info': order,
             'id': id,
@@ -1727,9 +1723,12 @@ class bitmex(Exchange):
         market = self.market(symbol)
         orderType = self.capitalize(type)
         reduceOnly = self.safe_value(params, 'reduceOnly')
-        if reduceOnly is not None:
-            if (market['type'] != 'swap') and (market['type'] != 'future'):
-                raise InvalidOrder(self.id + ' createOrder() does not support reduceOnly for ' + market['type'] + ' orders, reduceOnly orders are supported for swap and future markets only')
+        if reduceOnly is not None and market['type'] not in ['swap', 'future']:
+            raise InvalidOrder(
+                f'{self.id} createOrder() does not support reduceOnly for '
+                + market['type']
+                + ' orders, reduceOnly orders are supported for swap and future markets only'
+            )
         brokerId = self.safe_string(self.options, 'brokerId', 'CCXT')
         request = {
             'symbol': market['id'],
@@ -1738,14 +1737,15 @@ class bitmex(Exchange):
             'ordType': orderType,
             'text': brokerId,
         }
-        if (orderType == 'Stop') or (orderType == 'StopLimit') or (orderType == 'MarketIfTouched') or (orderType == 'LimitIfTouched'):
+        if orderType in ['Stop', 'StopLimit', 'MarketIfTouched', 'LimitIfTouched']:
             stopPrice = self.safe_number_2(params, 'stopPx', 'stopPrice')
             if stopPrice is None:
-                raise ArgumentsRequired(self.id + ' createOrder() requires a stopPx or stopPrice parameter for the ' + orderType + ' order type')
-            else:
-                request['stopPx'] = float(self.price_to_precision(symbol, stopPrice))
-                params = self.omit(params, ['stopPx', 'stopPrice'])
-        if (orderType == 'Limit') or (orderType == 'StopLimit') or (orderType == 'LimitIfTouched'):
+                raise ArgumentsRequired(
+                    f'{self.id} createOrder() requires a stopPx or stopPrice parameter for the {orderType} order type'
+                )
+            request['stopPx'] = float(self.price_to_precision(symbol, stopPrice))
+            params = self.omit(params, ['stopPx', 'stopPrice'])
+        if orderType in ['Limit', 'StopLimit', 'LimitIfTouched']:
             request['price'] = float(self.price_to_precision(symbol, price))
         clientOrderId = self.safe_string_2(params, 'clOrdID', 'clientOrderId')
         if clientOrderId is not None:
@@ -1795,9 +1795,11 @@ class bitmex(Exchange):
         response = self.privateDeleteOrder(self.extend(request, params))
         order = self.safe_value(response, 0, {})
         error = self.safe_string(order, 'error')
-        if error is not None:
-            if error.find('Unable to cancel order due to existing state') >= 0:
-                raise OrderNotFound(self.id + ' cancelOrder() failed: ' + error)
+        if (
+            error is not None
+            and error.find('Unable to cancel order due to existing state') >= 0
+        ):
+            raise OrderNotFound(f'{self.id} cancelOrder() failed: {error}')
         return self.parse_order(order)
 
     def cancel_orders(self, ids, symbol=None, params={}):
@@ -2086,7 +2088,7 @@ class bitmex(Exchange):
         crossMargin = self.safe_value(position, 'crossMargin')
         marginMode = 'cross' if (crossMargin is True) else 'isolated'
         notional = None
-        if market['quote'] == 'USDT' or market['quote'] == 'USD' or market['quote'] == 'EUR':
+        if market['quote'] in ['USDT', 'USD', 'EUR']:
             notional = Precise.string_mul(self.safe_string(position, 'foreignNotional'), '-1')
         else:
             notional = self.safe_string(position, 'homeNotional')
@@ -2124,26 +2126,20 @@ class bitmex(Exchange):
             return value
         resultValue = None
         value = self.number_to_string(value)
-        if (market['quote'] == 'USD') or (market['quote'] == 'EUR'):
+        if market['quote'] in ['USD', 'EUR']:
             resultValue = Precise.string_mul(value, '0.00000001')
         elif market['quote'] == 'USDT':
             resultValue = Precise.string_mul(value, '0.000001')
         else:
-            currency = None
             quote = market['quote']
-            if quote is not None:
-                currency = self.currency(market['quote'])
+            currency = self.currency(market['quote']) if quote is not None else None
             if currency is not None:
                 resultValue = Precise.string_mul(value, self.number_to_string(currency['precision']))
         resultValue = float(resultValue) if (resultValue is not None) else None
         return resultValue
 
     def is_fiat(self, currency):
-        if currency == 'EUR':
-            return True
-        if currency == 'PLN':
-            return True
-        return False
+        return True if currency == 'EUR' else currency == 'PLN'
 
     def withdraw(self, code, amount, address, tag=None, params={}):
         """
@@ -2160,7 +2156,9 @@ class bitmex(Exchange):
         self.load_markets()
         # currency = self.currency(code)
         if code != 'BTC':
-            raise ExchangeError(self.id + ' supoprts BTC withdrawals only, other currencies coming soon...')
+            raise ExchangeError(
+                f'{self.id} supoprts BTC withdrawals only, other currencies coming soon...'
+            )
         currency = self.currency(code)
         request = {
             'currency': 'XBt',  # temporarily
@@ -2297,8 +2295,7 @@ class bitmex(Exchange):
             item = response[i]
             marketId = self.safe_string(item, 'symbol')
             market = self.safe_market(marketId)
-            swap = self.safe_value(market, 'swap', False)
-            if swap:
+            if swap := self.safe_value(market, 'swap', False):
                 filteredResponse.append(item)
         return self.parse_funding_rates(filteredResponse, symbols)
 
@@ -2517,13 +2514,15 @@ class bitmex(Exchange):
         :returns dict: response from the exchange
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' setLeverage() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} setLeverage() requires a symbol argument')
         if (leverage < 0.01) or (leverage > 100):
-            raise BadRequest(self.id + ' leverage should be between 0.01 and 100')
+            raise BadRequest(f'{self.id} leverage should be between 0.01 and 100')
         self.load_markets()
         market = self.market(symbol)
-        if market['type'] != 'swap' and market['type'] != 'future':
-            raise BadSymbol(self.id + ' setLeverage() supports future and swap contracts only')
+        if market['type'] not in ['swap', 'future']:
+            raise BadSymbol(
+                f'{self.id} setLeverage() supports future and swap contracts only'
+            )
         request = {
             'symbol': market['id'],
             'leverage': leverage,
@@ -2539,15 +2538,21 @@ class bitmex(Exchange):
         :returns dict: response from the exchange
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' setMarginMode() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} setMarginMode() requires a symbol argument'
+            )
         marginMode = marginMode.lower()
-        if marginMode != 'isolated' and marginMode != 'cross':
-            raise BadRequest(self.id + ' setMarginMode() marginMode argument should be isolated or cross')
+        if marginMode not in ['isolated', 'cross']:
+            raise BadRequest(
+                f'{self.id} setMarginMode() marginMode argument should be isolated or cross'
+            )
         self.load_markets()
         market = self.market(symbol)
-        if (market['type'] != 'swap') and (market['type'] != 'future'):
-            raise BadSymbol(self.id + ' setMarginMode() supports swap and future contracts only')
-        enabled = False if (marginMode == 'cross') else True
+        if market['type'] not in ['swap', 'future']:
+            raise BadSymbol(
+                f'{self.id} setMarginMode() supports swap and future contracts only'
+            )
+        enabled = marginMode != 'cross'
         request = {
             'symbol': market['id'],
             'enabled': enabled,
@@ -2566,12 +2571,17 @@ class bitmex(Exchange):
         self.load_markets()
         networkCode = self.safe_string_upper(params, 'network')
         if networkCode is None:
-            raise ArgumentsRequired(self.id + ' fetchDepositAddress requires params["network"]')
+            raise ArgumentsRequired(
+                f'{self.id} fetchDepositAddress requires params["network"]'
+            )
         currency = self.currency(code)
         currencyId = currency['id']
         networkId = self.network_code_to_id(networkCode, currency['code'])
         idLength = len(currencyId)
-        currencyId = currencyId[0:idLength - 1] + currencyId[idLength - 1:idLength].lower()  # make the last letter lowercase
+        currencyId = (
+            currencyId[: idLength - 1]
+            + currencyId[idLength - 1 : idLength].lower()
+        )
         params = self.omit(params, 'network')
         request = {
             'currency': currencyId,
@@ -2593,21 +2603,18 @@ class bitmex(Exchange):
         isAuthenticated = self.check_required_credentials(False)
         cost = self.safe_value(config, 'cost', 1)
         if cost != 1:  # trading endpoints
-            if isAuthenticated:
-                return cost
-            else:
-                return 20
+            return cost if isAuthenticated else 20
         return cost
 
     def handle_errors(self, code, reason, url, method, headers, body, response, requestHeaders, requestBody):
         if response is None:
             return
         if code == 429:
-            raise DDoSProtection(self.id + ' ' + body)
+            raise DDoSProtection(f'{self.id} {body}')
         if code >= 400:
             error = self.safe_value(response, 'error', {})
             message = self.safe_string(error, 'message')
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_exactly_matched_exception(self.exceptions['exact'], message, feedback)
             self.throw_broadly_matched_exception(self.exceptions['broad'], message, feedback)
             if code == 400:
@@ -2618,10 +2625,10 @@ class bitmex(Exchange):
         return self.milliseconds()
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        query = '/api/' + self.version + '/' + path
+        query = f'/api/{self.version}/{path}'
         if method == 'GET':
             if params:
-                query += '?' + self.urlencode(params)
+                query += f'?{self.urlencode(params)}'
         else:
             format = self.safe_string(params, '_format')
             if format is not None:
@@ -2641,9 +2648,8 @@ class bitmex(Exchange):
             expires = str(expires)
             auth += expires
             headers['api-expires'] = expires
-            if method == 'POST' or method == 'PUT' or method == 'DELETE':
-                if params:
-                    body = self.json(params)
-                    auth += body
+            if method in ['POST', 'PUT', 'DELETE'] and params:
+                body = self.json(params)
+                auth += body
             headers['api-signature'] = self.hmac(self.encode(auth), self.encode(self.secret))
         return {'url': url, 'method': method, 'body': body, 'headers': headers}

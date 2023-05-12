@@ -1427,16 +1427,10 @@ class binance(Exchange):
         })
 
     def is_inverse(self, type, subType=None):
-        if subType is None:
-            return type == 'delivery'
-        else:
-            return subType == 'inverse'
+        return type == 'delivery' if subType is None else subType == 'inverse'
 
     def is_linear(self, type, subType=None):
-        if subType is None:
-            return(type == 'future') or (type == 'swap')
-        else:
-            return subType == 'linear'
+        return type in ['future', 'swap'] if subType is None else subType == 'linear'
 
     def set_sandbox_mode(self, enable):
         super(binance, self).set_sandbox_mode(enable)
@@ -1444,25 +1438,23 @@ class binance(Exchange):
 
     def market(self, symbol):
         if self.markets is None:
-            raise ExchangeError(self.id + ' markets not loaded')
+            raise ExchangeError(f'{self.id} markets not loaded')
         # defaultType has legacy support on binance
         defaultType = self.safe_string(self.options, 'defaultType')
         defaultSubType = self.safe_string(self.options, 'defaultSubType')
-        isLegacyLinear = defaultType == 'future'
-        isLegacyInverse = defaultType == 'delivery'
-        isLegacy = isLegacyLinear or isLegacyInverse
         if isinstance(symbol, str):
+            isLegacyLinear = defaultType == 'future'
+            isLegacyInverse = defaultType == 'delivery'
             if symbol in self.markets:
                 market = self.markets[symbol]
-                # begin diff
-                if isLegacy and market['spot']:
-                    settle = market['quote'] if isLegacyLinear else market['base']
-                    futuresSymbol = symbol + ':' + settle
-                    if futuresSymbol in self.markets:
-                        return self.markets[futuresSymbol]
-                else:
+                isLegacy = isLegacyLinear or isLegacyInverse
+                if not isLegacy or not market['spot']:
                     return market
-                # end diff
+                settle = market['quote'] if isLegacyLinear else market['base']
+                futuresSymbol = f'{symbol}:{settle}'
+                if futuresSymbol in self.markets:
+                    return self.markets[futuresSymbol]
+                        # end diff
             elif symbol in self.markets_by_id:
                 markets = self.markets_by_id[symbol]
                 # begin diff
@@ -1482,10 +1474,10 @@ class binance(Exchange):
                 # support legacy symbols
                 base, quote = symbol.split('/')
                 settle = base if (quote == 'USD') else quote
-                futuresSymbol = symbol + ':' + settle
+                futuresSymbol = f'{symbol}:{settle}'
                 if futuresSymbol in self.markets:
                     return self.markets[futuresSymbol]
-        raise BadSymbol(self.id + ' does not have market symbol ' + symbol)
+        raise BadSymbol(f'{self.id} does not have market symbol {symbol}')
 
     def cost_to_precision(self, symbol, cost):
         return self.decimal_to_precision(cost, TRUNCATE, self.markets[symbol]['precision']['quote'], self.precisionMode, self.paddingMode)
@@ -1702,16 +1694,18 @@ class binance(Exchange):
             fetchMarkets.append(type)
         for i in range(0, len(fetchMarkets)):
             marketType = fetchMarkets[i]
-            if marketType == 'spot':
-                promises.append(self.publicGetExchangeInfo(params))
+            if marketType == 'inverse':
+                promises.append(self.dapiPublicGetExchangeInfo(params))
             elif marketType == 'linear':
                 promises.append(self.fapiPublicGetExchangeInfo(params))
-            elif marketType == 'inverse':
-                promises.append(self.dapiPublicGetExchangeInfo(params))
             elif marketType == 'option':
                 promises.append(self.eapiPublicGetExchangeInfo(params))
+            elif marketType == 'spot':
+                promises.append(self.publicGetExchangeInfo(params))
             else:
-                raise ExchangeError(self.id + ' fetchMarkets() self.options fetchMarkets "' + marketType + '" is not a supported market type')
+                raise ExchangeError(
+                    f'{self.id} fetchMarkets() self.options fetchMarkets "{marketType}" is not a supported market type'
+                )
         spotMarkets = self.safe_value(self.safe_value(promises, 0), 'symbols', [])
         futureMarkets = self.safe_value(self.safe_value(promises, 1), 'symbols', [])
         deliveryMarkets = self.safe_value(self.safe_value(promises, 2), 'symbols', [])
@@ -1924,10 +1918,7 @@ class binance(Exchange):
         #
         if self.options['adjustForTimeDifference']:
             self.load_time_difference()
-        result = []
-        for i in range(0, len(markets)):
-            result.append(self.parse_market(markets[i]))
-        return result
+        return [self.parse_market(markets[i]) for i in range(0, len(markets))]
 
     def parse_market(self, market):
         swap = False
@@ -1964,14 +1955,14 @@ class binance(Exchange):
         linear = None
         inverse = None
         strike = self.safe_integer(market, 'strikePrice')
-        symbol = base + '/' + quote
+        symbol = f'{base}/{quote}'
         if contract:
             if swap:
-                symbol = symbol + ':' + settle
+                symbol = f'{symbol}:{settle}'
             elif future:
-                symbol = symbol + ':' + settle + '-' + self.yymmdd(expiry)
+                symbol = f'{symbol}:{settle}-{self.yymmdd(expiry)}'
             elif option:
-                symbol = symbol + ':' + settle + '-' + self.yymmdd(expiry) + '-' + self.number_to_string(strike) + '-' + self.safe_string(optionParts, 3)
+                symbol = f'{symbol}:{settle}-{self.yymmdd(expiry)}-{self.number_to_string(strike)}-{self.safe_string(optionParts, 3)}'
             contractSize = self.safe_number_2(market, 'contractSize', 'unit', self.parse_number('1'))
             linear = settle == quote
             inverse = settle == base
@@ -2119,8 +2110,7 @@ class binance(Exchange):
                 quote = self.safe_value(asset, 'quoteAsset', {})
                 baseCode = self.safe_currency_code(self.safe_string(base, 'asset'))
                 quoteCode = self.safe_currency_code(self.safe_string(quote, 'asset'))
-                subResult = {}
-                subResult[baseCode] = self.parse_balance_helper(base)
+                subResult = {baseCode: self.parse_balance_helper(base)}
                 subResult[quoteCode] = self.parse_balance_helper(quote)
                 result[symbol] = self.safe_balance(subResult)
         elif type == 'savings':
@@ -2211,7 +2201,7 @@ class binance(Exchange):
                     for i in range(1, len(paramSymbols)):
                         symbol = paramSymbols[i]
                         id = self.market_id(symbol)
-                        symbols += ',' + id
+                        symbols += f',{id}'
                 else:
                     symbols = paramSymbols
                 request['symbols'] = symbols
@@ -2588,9 +2578,7 @@ class binance(Exchange):
         #     }
         #
         timestamp = self.safe_integer(ticker, 'closeTime')
-        marketType = None
-        if ('time' in ticker):
-            marketType = 'contract'
+        marketType = 'contract' if ('time' in ticker) else None
         if marketType is None:
             marketType = 'spot' if ('bidQty' in ticker) else 'contract'
         marketId = self.safe_string(ticker, 'symbol')
@@ -2747,7 +2735,9 @@ class binance(Exchange):
             #     ]
             #
         else:
-            raise NotSupported(self.id + ' fetchLastPrices() does not support ' + marketType + ' markets yet')
+            raise NotSupported(
+                f'{self.id} fetchLastPrices() does not support {marketType} markets yet'
+            )
         response = getattr(self, method)(query)
         return self.parse_last_prices(response, symbols)
 
@@ -2899,12 +2889,11 @@ class binance(Exchange):
             # It didn't work before without the endTime
             # https://github.com/ccxt/ccxt/issues/8454
             #
-            if market['inverse']:
-                if since > 0:
-                    duration = self.parse_timeframe(timeframe)
-                    endTime = self.sum(since, limit * duration * 1000 - 1)
-                    now = self.milliseconds()
-                    request['endTime'] = min(now, endTime)
+            if market['inverse'] and since > 0:
+                duration = self.parse_timeframe(timeframe)
+                endTime = self.sum(since, limit * duration * 1000 - 1)
+                now = self.milliseconds()
+                request['endTime'] = min(now, endTime)
         if until is not None:
             request['endTime'] = until
         method = 'publicGetKlines'

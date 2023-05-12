@@ -413,56 +413,67 @@ class bitso(Exchange):
             fee['tiers'] = tiers
             # TODO: precisions can be also set from https://bitso.com/api/v3/catalogues ->available_currency_conversions->currencies(or ->currencies->metadata)  or https://bitso.com/api/v3/get_exchange_rates/mxn
             defaultPricePrecision = self.safe_number(self.options['precision'], quote, self.options['defaultPrecision'])
-            result.append(self.extend({
-                'id': id,
-                'symbol': base + '/' + quote,
-                'base': base,
-                'quote': quote,
-                'settle': None,
-                'baseId': baseId,
-                'quoteId': quoteId,
-                'settleId': None,
-                'type': 'spot',
-                'spot': True,
-                'margin': False,
-                'swap': False,
-                'future': False,
-                'option': False,
-                'active': None,
-                'contract': False,
-                'linear': None,
-                'inverse': None,
-                'taker': taker,
-                'maker': maker,
-                'contractSize': None,
-                'expiry': None,
-                'expiryDatetime': None,
-                'strike': None,
-                'optionType': None,
-                'precision': {
-                    'amount': self.safe_number(self.options['precision'], base, self.options['defaultPrecision']),
-                    'price': self.safe_number(market, 'tick_size', defaultPricePrecision),
-                },
-                'limits': {
-                    'leverage': {
-                        'min': None,
-                        'max': None,
+            result.append(
+                self.extend(
+                    {
+                        'id': id,
+                        'symbol': f'{base}/{quote}',
+                        'base': base,
+                        'quote': quote,
+                        'settle': None,
+                        'baseId': baseId,
+                        'quoteId': quoteId,
+                        'settleId': None,
+                        'type': 'spot',
+                        'spot': True,
+                        'margin': False,
+                        'swap': False,
+                        'future': False,
+                        'option': False,
+                        'active': None,
+                        'contract': False,
+                        'linear': None,
+                        'inverse': None,
+                        'taker': taker,
+                        'maker': maker,
+                        'contractSize': None,
+                        'expiry': None,
+                        'expiryDatetime': None,
+                        'strike': None,
+                        'optionType': None,
+                        'precision': {
+                            'amount': self.safe_number(
+                                self.options['precision'],
+                                base,
+                                self.options['defaultPrecision'],
+                            ),
+                            'price': self.safe_number(
+                                market, 'tick_size', defaultPricePrecision
+                            ),
+                        },
+                        'limits': {
+                            'leverage': {
+                                'min': None,
+                                'max': None,
+                            },
+                            'amount': {
+                                'min': self.safe_number(market, 'minimum_amount'),
+                                'max': self.safe_number(market, 'maximum_amount'),
+                            },
+                            'price': {
+                                'min': self.safe_number(market, 'minimum_price'),
+                                'max': self.safe_number(market, 'maximum_price'),
+                            },
+                            'cost': {
+                                'min': self.safe_number(market, 'minimum_value'),
+                                'max': self.safe_number(market, 'maximum_value'),
+                            },
+                        },
+                        'info': market,
                     },
-                    'amount': {
-                        'min': self.safe_number(market, 'minimum_amount'),
-                        'max': self.safe_number(market, 'maximum_amount'),
-                    },
-                    'price': {
-                        'min': self.safe_number(market, 'minimum_price'),
-                        'max': self.safe_number(market, 'maximum_price'),
-                    },
-                    'cost': {
-                        'min': self.safe_number(market, 'minimum_value'),
-                        'max': self.safe_number(market, 'maximum_value'),
-                    },
-                },
-                'info': market,
-            }, fee))
+                    fee,
+                )
+            )
         return result
 
     def parse_balance(self, response):
@@ -741,10 +752,7 @@ class bitso(Exchange):
         side = self.safe_string_2(trade, 'side', 'maker_side')
         makerSide = self.safe_string(trade, 'maker_side')
         takerOrMaker = None
-        if side == makerSide:
-            takerOrMaker = 'maker'
-        else:
-            takerOrMaker = 'taker'
+        takerOrMaker = 'maker' if side == makerSide else 'taker'
         amount = self.safe_string_2(trade, 'amount', 'major')
         if amount is not None:
             amount = Precise.string_abs(amount)
@@ -882,7 +890,9 @@ class bitso(Exchange):
         # warn the user with an exception if the user wants to filter
         # starting from since timestamp, but does not set the trade id with an extra 'marker' param
         if (since is not None) and not markerInParams:
-            raise ExchangeError(self.id + ' fetchMyTrades() does not support fetching trades starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id')
+            raise ExchangeError(
+                f'{self.id} fetchMyTrades() does not support fetching trades starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id'
+            )
         # convert it to an integer unconditionally
         if markerInParams:
             params = self.extend(params, {
@@ -948,10 +958,10 @@ class bitso(Exchange):
         :returns dict: an list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if not isinstance(ids, list):
-            raise ArgumentsRequired(self.id + ' cancelOrders() ids argument should be an array')
-        market = None
-        if symbol is not None:
-            market = self.market(symbol)
+            raise ArgumentsRequired(
+                f'{self.id} cancelOrders() ids argument should be an array'
+            )
+        market = self.market(symbol) if symbol is not None else None
         oids = ','.join(ids)
         request = {
             'oids': oids,
@@ -978,7 +988,9 @@ class bitso(Exchange):
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is not None:
-            raise NotSupported(self.id + ' cancelAllOrders() deletes all orders for user, it does not support filtering by symbol.')
+            raise NotSupported(
+                f'{self.id} cancelAllOrders() deletes all orders for user, it does not support filtering by symbol.'
+            )
         response = self.privateDeleteOrdersAll(params)
         #
         #     {
@@ -1007,10 +1019,7 @@ class bitso(Exchange):
         # yWTQGxDMZ0VimZgZ
         #
         id = None
-        if isinstance(order, str):
-            id = order
-        else:
-            id = self.safe_string(order, 'oid')
+        id = order if isinstance(order, str) else self.safe_string(order, 'oid')
         side = self.safe_string(order, 'side')
         status = self.parse_order_status(self.safe_string(order, 'status'))
         marketId = self.safe_string(order, 'book')
@@ -1064,7 +1073,9 @@ class bitso(Exchange):
         # warn the user with an exception if the user wants to filter
         # starting from since timestamp, but does not set the trade id with an extra 'marker' param
         if (since is not None) and not markerInParams:
-            raise ExchangeError(self.id + ' fetchOpenOrders() does not support fetching orders starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id')
+            raise ExchangeError(
+                f'{self.id} fetchOpenOrders() does not support fetching orders starting from a timestamp with the `since` argument, use the `marker` extra param to filter starting from an integer trade id'
+            )
         # convert it to an integer unconditionally
         if markerInParams:
             params = self.extend(params, {
@@ -1077,8 +1088,7 @@ class bitso(Exchange):
             # 'marker': id,  # integer id to start from
         }
         response = self.privateGetOpenOrders(self.extend(request, params))
-        orders = self.parse_orders(response['payload'], market, since, limit)
-        return orders
+        return self.parse_orders(response['payload'], market, since, limit)
 
     def fetch_order(self, id, symbol=None, params={}):
         """
@@ -1096,7 +1106,7 @@ class bitso(Exchange):
             numOrders = len(response['payload'])
             if numOrders == 1:
                 return self.parse_order(payload[0])
-        raise OrderNotFound(self.id + ': The order ' + id + ' not found.')
+        raise OrderNotFound(f'{self.id}: The order {id} not found.')
 
     def fetch_order_trades(self, id, symbol=None, since=None, limit=None, params={}):
         """
@@ -1166,9 +1176,7 @@ class bitso(Exchange):
         :returns [dict]: a list of `transaction structures <https://docs.ccxt.com/en/latest/manual.html#transaction-structure>`
         """
         self.load_markets()
-        currency = None
-        if code is not None:
-            currency = self.currency(code)
+        currency = self.currency(code) if code is not None else None
         response = self.privateGetFundings(params)
         #
         #     {
@@ -1462,15 +1470,15 @@ class bitso(Exchange):
             'LTC': 'Litecoin',
         }
         currency = self.currency(code)
-        method = methods[code] if (code in methods) else None
+        method = methods.get(code, None)
         if method is None:
-            raise ExchangeError(self.id + ' not valid withdraw coin: ' + code)
+            raise ExchangeError(f'{self.id} not valid withdraw coin: {code}')
         request = {
             'amount': amount,
             'address': address,
             'destination_tag': tag,
         }
-        classMethod = 'privatePost' + method + 'Withdrawal'
+        classMethod = f'privatePost{method}Withdrawal'
         response = getattr(self, classMethod)(self.extend(request, params))
         #
         #     {
@@ -1585,24 +1593,22 @@ class bitso(Exchange):
         return self.safe_string(statuses, status, status)
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        endpoint = '/' + self.version + '/' + self.implode_params(path, params)
+        endpoint = f'/{self.version}/{self.implode_params(path, params)}'
         query = self.omit(params, self.extract_params(path))
-        if method == 'GET' or method == 'DELETE':
-            if query:
-                endpoint += '?' + self.urlencode(query)
+        if method in ['GET', 'DELETE'] and query:
+            endpoint += f'?{self.urlencode(query)}'
         url = self.urls['api']['rest'] + endpoint
         if api == 'private':
             self.check_required_credentials()
             nonce = str(self.nonce())
             request = ''.join([nonce, method, endpoint])
-            if method != 'GET' and method != 'DELETE':
-                if query:
-                    body = self.json(query)
-                    request += body
+            if method not in ['GET', 'DELETE'] and query:
+                body = self.json(query)
+                request += body
             signature = self.hmac(self.encode(request), self.encode(self.secret))
-            auth = self.apiKey + ':' + nonce + ':' + signature
+            auth = f'{self.apiKey}:{nonce}:{signature}'
             headers = {
-                'Authorization': 'Bitso ' + auth,
+                'Authorization': f'Bitso {auth}',
                 'Content-Type': 'application/json',
             }
         return {'url': url, 'method': method, 'body': body, 'headers': headers}
@@ -1616,12 +1622,9 @@ class bitso(Exchange):
             #
             success = self.safe_value(response, 'success', False)
             if isinstance(success, str):
-                if (success == 'true') or (success == '1'):
-                    success = True
-                else:
-                    success = False
+                success = success in ['true', '1']
             if not success:
-                feedback = self.id + ' ' + self.json(response)
+                feedback = f'{self.id} {self.json(response)}'
                 error = self.safe_value(response, 'error')
                 if error is None:
                     raise ExchangeError(feedback)

@@ -200,7 +200,7 @@ class bithumb(Exchange):
             quote = quotes[i]
             quoteId = quote
             extension = self.safe_value(quoteCurrencies, quote, {})
-            method = 'publicGetTickerALL' + quote
+            method = f'publicGetTickerALL{quote}'
             response = getattr(self, method)(params)
             data = self.safe_value(response, 'data')
             currencyIds = list(data.keys())
@@ -215,51 +215,54 @@ class bithumb(Exchange):
                     numElements = len(market)
                     if numElements == 0:
                         active = False
-                entry = self.deep_extend({
-                    'id': currencyId,
-                    'symbol': base + '/' + quote,
-                    'base': base,
-                    'quote': quote,
-                    'settle': None,
-                    'baseId': currencyId,
-                    'quoteId': quoteId,
-                    'settleId': None,
-                    'type': 'spot',
-                    'spot': True,
-                    'margin': False,
-                    'swap': False,
-                    'future': False,
-                    'option': False,
-                    'active': active,
-                    'contract': False,
-                    'linear': None,
-                    'inverse': None,
-                    'contractSize': None,
-                    'expiry': None,
-                    'expiryDateTime': None,
-                    'strike': None,
-                    'optionType': None,
-                    'precision': {
-                        'amount': int('4'),
-                        'price': int('4'),
+                entry = self.deep_extend(
+                    {
+                        'id': currencyId,
+                        'symbol': f'{base}/{quote}',
+                        'base': base,
+                        'quote': quote,
+                        'settle': None,
+                        'baseId': currencyId,
+                        'quoteId': quoteId,
+                        'settleId': None,
+                        'type': 'spot',
+                        'spot': True,
+                        'margin': False,
+                        'swap': False,
+                        'future': False,
+                        'option': False,
+                        'active': active,
+                        'contract': False,
+                        'linear': None,
+                        'inverse': None,
+                        'contractSize': None,
+                        'expiry': None,
+                        'expiryDateTime': None,
+                        'strike': None,
+                        'optionType': None,
+                        'precision': {
+                            'amount': int('4'),
+                            'price': int('4'),
+                        },
+                        'limits': {
+                            'leverage': {
+                                'min': None,
+                                'max': None,
+                            },
+                            'amount': {
+                                'min': None,
+                                'max': None,
+                            },
+                            'price': {
+                                'min': None,
+                                'max': None,
+                            },
+                            'cost': {},  # set via options
+                        },
+                        'info': market,
                     },
-                    'limits': {
-                        'leverage': {
-                            'min': None,
-                            'max': None,
-                        },
-                        'amount': {
-                            'min': None,
-                            'max': None,
-                        },
-                        'price': {
-                            'min': None,
-                            'max': None,
-                        },
-                        'cost': {},  # set via options
-                    },
-                    'info': market,
-                }, extension)
+                    extension,
+                )
                 result.append(entry)
         return result
 
@@ -272,9 +275,9 @@ class bithumb(Exchange):
             account = self.account()
             currency = self.currency(code)
             lowerCurrencyId = self.safe_string_lower(currency, 'id')
-            account['total'] = self.safe_string(balances, 'total_' + lowerCurrencyId)
-            account['used'] = self.safe_string(balances, 'in_use_' + lowerCurrencyId)
-            account['free'] = self.safe_string(balances, 'available_' + lowerCurrencyId)
+            account['total'] = self.safe_string(balances, f'total_{lowerCurrencyId}')
+            account['used'] = self.safe_string(balances, f'in_use_{lowerCurrencyId}')
+            account['free'] = self.safe_string(balances, f'available_{lowerCurrencyId}')
             result[code] = account
         return self.safe_balance(result)
 
@@ -418,11 +421,11 @@ class bithumb(Exchange):
         for i in range(0, len(ids)):
             id = ids[i]
             market = self.safe_market(id)
-            symbol = market['symbol']
             ticker = tickers[id]
             isArray = isinstance(ticker, list)
             if not isArray:
                 ticker['date'] = timestamp
+                symbol = market['symbol']
                 result[symbol] = self.parse_ticker(ticker, market)
         return self.filter_by_array(result, 'symbol', symbols)
 
@@ -557,8 +560,8 @@ class bithumb(Exchange):
                 transactionDate = parts[0]
                 transactionTime = parts[1]
                 if len(transactionTime) < 8:
-                    transactionTime = '0' + transactionTime
-                timestamp = self.parse8601(transactionDate + ' ' + transactionTime)
+                    transactionTime = f'0{transactionTime}'
+                timestamp = self.parse8601(f'{transactionDate} {transactionTime}')
             else:
                 timestamp = self.safe_integer_product(trade, 'transaction_date', 0.001)
         if timestamp is not None:
@@ -653,11 +656,11 @@ class bithumb(Exchange):
             request['price'] = price
             request['type'] = 'bid' if (side == 'buy') else 'ask'
         else:
-            method = 'privatePostTradeMarket' + self.capitalize(side)
+            method = f'privatePostTradeMarket{self.capitalize(side)}'
         response = getattr(self, method)(self.extend(request, params))
         id = self.safe_string(response, 'order_id')
         if id is None:
-            raise InvalidOrder(self.id + ' createOrder() did not return an order id')
+            raise InvalidOrder(f'{self.id} createOrder() did not return an order id')
         return {
             'info': response,
             'symbol': symbol,
@@ -674,7 +677,7 @@ class bithumb(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -768,9 +771,7 @@ class bithumb(Exchange):
         side = 'buy' if (sideProperty == 'bid') else 'sell'
         status = self.parse_order_status(self.safe_string(order, 'order_status'))
         price = self.safe_string_2(order, 'order_price', 'price')
-        type = 'limit'
-        if Precise.string_equals(price, '0'):
-            type = 'market'
+        type = 'market' if Precise.string_equals(price, '0') else 'limit'
         amount = self.fix_comma_number(self.safe_string_2(order, 'order_qty', 'units'))
         remaining = self.fix_comma_number(self.safe_string(order, 'units_remaining'))
         if remaining is None:
@@ -778,13 +779,15 @@ class bithumb(Exchange):
                 remaining = '0'
             elif status != 'canceled':
                 remaining = amount
-        symbol = None
         baseId = self.safe_string(order, 'order_currency')
         quoteId = self.safe_string(order, 'payment_currency')
         base = self.safe_currency_code(baseId)
         quote = self.safe_currency_code(quoteId)
-        if (base is not None) and (quote is not None):
-            symbol = base + '/' + quote
+        symbol = (
+            f'{base}/{quote}'
+            if (base is not None) and (quote is not None)
+            else None
+        )
         if symbol is None:
             market = self.safe_market(None, market)
             symbol = market['symbol']
@@ -825,7 +828,9 @@ class bithumb(Exchange):
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOpenOrders() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOpenOrders() requires a symbol argument'
+            )
         self.load_markets()
         market = self.market(symbol)
         if limit is None:
@@ -868,9 +873,13 @@ class bithumb(Exchange):
         """
         side_in_params = ('side' in params)
         if not side_in_params:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a `side` parameter(sell or buy)')
+            raise ArgumentsRequired(
+                f'{self.id} cancelOrder() requires a `side` parameter(sell or buy)'
+            )
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a `symbol` argument')
+            raise ArgumentsRequired(
+                f'{self.id} cancelOrder() requires a `symbol` argument'
+            )
         market = self.market(symbol)
         side = 'bid' if (params['side'] == 'buy') else 'ask'
         params = self.omit(params, ['side', 'currency'])
@@ -908,10 +917,12 @@ class bithumb(Exchange):
             'address': address,
             'currency': currency['id'],
         }
-        if currency == 'XRP' or currency == 'XMR' or currency == 'EOS' or currency == 'STEEM':
+        if currency in ['XRP', 'XMR', 'EOS', 'STEEM']:
             destination = self.safe_string(params, 'destination')
             if (tag is None) and (destination is None):
-                raise ArgumentsRequired(self.id + ' ' + code + ' withdraw() requires a tag argument or an extra destination param')
+                raise ArgumentsRequired(
+                    f'{self.id} {code} withdraw() requires a tag argument or an extra destination param'
+                )
             elif tag is not None:
                 request['destination'] = tag
         response = self.privatePostTradeBtcWithdrawal(self.extend(request, params))
@@ -962,12 +973,12 @@ class bithumb(Exchange):
         return self.milliseconds()
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
-        endpoint = '/' + self.implode_params(path, params)
+        endpoint = f'/{self.implode_params(path, params)}'
         url = self.implode_hostname(self.urls['api'][api]) + endpoint
         query = self.omit(params, self.extract_params(path))
         if api == 'public':
             if query:
-                url += '?' + self.urlencode(query)
+                url += f'?{self.urlencode(query)}'
         else:
             self.check_required_credentials()
             body = self.urlencode(self.extend({
@@ -996,12 +1007,9 @@ class bithumb(Exchange):
             status = self.safe_string(response, 'status')
             message = self.safe_string(response, 'message')
             if status is not None:
-                if status == '0000':
+                if status == '0000' or message == '거래 진행중인 내역이 존재하지 않습니다':
                     return  # no error
-                elif message == '거래 진행중인 내역이 존재하지 않습니다':
-                    # https://github.com/ccxt/ccxt/issues/9017
-                    return  # no error
-                feedback = self.id + ' ' + body
+                feedback = f'{self.id} {body}'
                 self.throw_exactly_matched_exception(self.exceptions, status, feedback)
                 self.throw_exactly_matched_exception(self.exceptions, message, feedback)
                 raise ExchangeError(feedback)

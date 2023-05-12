@@ -345,54 +345,58 @@ class bitvavo(Exchange):
             quote = self.safe_currency_code(quoteId)
             status = self.safe_string(market, 'status')
             baseCurrency = self.safe_value(currenciesById, baseId)
-            result.append({
-                'id': id,
-                'symbol': base + '/' + quote,
-                'base': base,
-                'quote': quote,
-                'settle': None,
-                'baseId': baseId,
-                'quoteId': quoteId,
-                'settleId': None,
-                'type': 'spot',
-                'spot': True,
-                'margin': False,
-                'swap': False,
-                'future': False,
-                'option': False,
-                'active': (status == 'trading'),
-                'contract': False,
-                'linear': None,
-                'inverse': None,
-                'contractSize': None,
-                'expiry': None,
-                'expiryDatetime': None,
-                'strike': None,
-                'optionType': None,
-                'precision': {
-                    'amount': self.safe_integer(baseCurrency, 'decimals', 8),
-                    'price': self.safe_integer(market, 'pricePrecision'),
-                },
-                'limits': {
-                    'leverage': {
-                        'min': None,
-                        'max': None,
+            result.append(
+                {
+                    'id': id,
+                    'symbol': f'{base}/{quote}',
+                    'base': base,
+                    'quote': quote,
+                    'settle': None,
+                    'baseId': baseId,
+                    'quoteId': quoteId,
+                    'settleId': None,
+                    'type': 'spot',
+                    'spot': True,
+                    'margin': False,
+                    'swap': False,
+                    'future': False,
+                    'option': False,
+                    'active': status == 'trading',
+                    'contract': False,
+                    'linear': None,
+                    'inverse': None,
+                    'contractSize': None,
+                    'expiry': None,
+                    'expiryDatetime': None,
+                    'strike': None,
+                    'optionType': None,
+                    'precision': {
+                        'amount': self.safe_integer(baseCurrency, 'decimals', 8),
+                        'price': self.safe_integer(market, 'pricePrecision'),
                     },
-                    'amount': {
-                        'min': self.safe_number(market, 'minOrderInBaseAsset'),
-                        'max': None,
+                    'limits': {
+                        'leverage': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'amount': {
+                            'min': self.safe_number(market, 'minOrderInBaseAsset'),
+                            'max': None,
+                        },
+                        'price': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'cost': {
+                            'min': self.safe_number(
+                                market, 'minOrderInQuoteAsset'
+                            ),
+                            'max': None,
+                        },
                     },
-                    'price': {
-                        'min': None,
-                        'max': None,
-                    },
-                    'cost': {
-                        'min': self.safe_number(market, 'minOrderInQuoteAsset'),
-                        'max': None,
-                    },
-                },
-                'info': market,
-            })
+                    'info': market,
+                }
+            )
         return result
 
     def fetch_currencies_from_cache(self, params={}):
@@ -930,8 +934,8 @@ class bitvavo(Exchange):
             'side': side,
             'orderType': type,
         }
-        isMarketOrder = (type == 'market') or (type == 'stopLoss') or (type == 'takeProfit')
-        isLimitOrder = (type == 'limit') or (type == 'stopLossLimit') or (type == 'takeProfitLimit')
+        isMarketOrder = type in ['market', 'stopLoss', 'takeProfit']
+        isLimitOrder = type in ['limit', 'stopLossLimit', 'takeProfitLimit']
         timeInForce = self.safe_string(params, 'timeInForce')
         triggerPrice = self.safe_string_n(params, ['triggerPrice', 'stopPrice', 'triggerAmount'])
         postOnly = self.is_post_only(isMarketOrder, False, params)
@@ -1029,14 +1033,15 @@ class bitvavo(Exchange):
             request['amount'] = self.amount_to_precision(symbol, amount)
         if amountRemaining is not None:
             request['amountRemaining'] = self.amount_to_precision(symbol, amountRemaining)
-        request = self.extend(request, params)
-        if request:
+        if request := self.extend(request, params):
             request['orderId'] = id
             request['market'] = market['id']
             response = self.privatePutOrder(self.extend(request, params))
             return self.parse_order(response, market)
         else:
-            raise ArgumentsRequired(self.id + ' editOrder() requires an amount argument, or a price argument, or non-empty params')
+            raise ArgumentsRequired(
+                f'{self.id} editOrder() requires an amount argument, or a price argument, or non-empty params'
+            )
 
     def cancel_order(self, id, symbol=None, params={}):
         """
@@ -1047,7 +1052,7 @@ class bitvavo(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' cancelOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} cancelOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1093,7 +1098,7 @@ class bitvavo(Exchange):
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrder() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrder() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1147,7 +1152,7 @@ class bitvavo(Exchange):
         :returns [dict]: a list of `order structures <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrders() requires a symbol argument')
+            raise ArgumentsRequired(f'{self.id} fetchOrders() requires a symbol argument')
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1387,7 +1392,9 @@ class bitvavo(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html#trade-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchMyTrades() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchMyTrades() requires a symbol argument'
+            )
         self.load_markets()
         market = self.market(symbol)
         request = {
@@ -1591,13 +1598,15 @@ class bitvavo(Exchange):
         amount = self.safe_number(transaction, 'amount')
         address = self.safe_string(transaction, 'address')
         txid = self.safe_string(transaction, 'txId')
-        fee = None
         feeCost = self.safe_number(transaction, 'fee')
-        if feeCost is not None:
-            fee = {
+        fee = (
+            {
                 'cost': feeCost,
                 'currency': code,
             }
+            if feeCost is not None
+            else None
+        )
         type = None
         if ('success' in transaction) or ('address' in transaction):
             type = 'withdrawal'
@@ -1626,18 +1635,16 @@ class bitvavo(Exchange):
 
     def sign(self, path, api='public', method='GET', params={}, headers=None, body=None):
         query = self.omit(params, self.extract_params(path))
-        url = '/' + self.version + '/' + self.implode_params(path, params)
-        getOrDelete = (method == 'GET') or (method == 'DELETE')
-        if getOrDelete:
-            if query:
-                url += '?' + self.urlencode(query)
+        url = f'/{self.version}/{self.implode_params(path, params)}'
+        getOrDelete = method in ['GET', 'DELETE']
+        if getOrDelete and query:
+            url += f'?{self.urlencode(query)}'
         if api == 'private':
             self.check_required_credentials()
             payload = ''
-            if not getOrDelete:
-                if query:
-                    body = self.json(query)
-                    payload = body
+            if not getOrDelete and query:
+                body = self.json(query)
+                payload = body
             timestamp = str(self.milliseconds())
             auth = timestamp + method + url + payload
             signature = self.hmac(self.encode(auth), self.encode(self.secret))
@@ -1664,12 +1671,12 @@ class bitvavo(Exchange):
         errorCode = self.safe_string(response, 'errorCode')
         error = self.safe_string(response, 'error')
         if errorCode is not None:
-            feedback = self.id + ' ' + body
+            feedback = f'{self.id} {body}'
             self.throw_broadly_matched_exception(self.exceptions['broad'], error, feedback)
             self.throw_exactly_matched_exception(self.exceptions['exact'], errorCode, feedback)
             raise ExchangeError(feedback)  # unknown message
 
     def calculate_rate_limiter_cost(self, api, method, path, params, config={}, context={}):
-        if ('noMarket' in config) and not ('market' in params):
+        if 'noMarket' in config and 'market' not in params:
             return config['noMarket']
         return self.safe_value(config, 'cost', 1)

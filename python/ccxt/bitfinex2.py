@@ -408,13 +408,13 @@ class bitfinex2(Exchange):
         return(code in self.options['fiat'])
 
     def get_currency_id(self, code):
-        return 'f' + code
+        return f'f{code}'
 
     def get_currency_name(self, code):
         # temporary fix for transpiler recognition, even though self is in parent class
         if code in self.options['currencyNames']:
             return self.options['currencyNames'][code]
-        raise NotSupported(self.id + ' ' + code + ' not supported for withdrawal')
+        raise NotSupported(f'{self.id} {code} not supported for withdrawal')
 
     def amount_to_precision(self, symbol, amount):
         # https://docs.bitfinex.com/docs/introduction#amount-precision
@@ -500,7 +500,7 @@ class bitfinex2(Exchange):
                 baseId = parts[0]
                 quoteId = parts[1]
             else:
-                baseId = id[0:3]
+                baseId = id[:3]
                 quoteId = id[3:6]
             base = self.safe_currency_code(baseId)
             quote = self.safe_currency_code(quoteId)
@@ -508,66 +508,70 @@ class bitfinex2(Exchange):
             splitQuote = quote.split('F0')
             base = self.safe_string(splitBase, 0)
             quote = self.safe_string(splitQuote, 0)
-            symbol = base + '/' + quote
+            symbol = f'{base}/{quote}'
             baseId = self.get_currency_id(baseId)
             quoteId = self.get_currency_id(quoteId)
             settle = None
             if swap:
                 settle = quote
-                symbol = symbol + ':' + settle
+                symbol = f'{symbol}:{settle}'
             minOrderSizeString = self.safe_string(market, 3)
             maxOrderSizeString = self.safe_string(market, 4)
             margin = False
             if self.in_array(id, marginIds):
                 margin = True
-            result.append({
-                'id': 't' + id,
-                'symbol': symbol,
-                'base': base,
-                'quote': quote,
-                'settle': settle,
-                'baseId': baseId,
-                'quoteId': quoteId,
-                'settleId': quoteId,
-                'type': 'spot' if spot else 'swap',
-                'spot': spot,
-                'margin': margin,
-                'swap': swap,
-                'future': False,
-                'option': False,
-                'active': True,
-                'contract': swap,
-                'linear': True if swap else None,
-                'inverse': False if swap else None,
-                'contractSize': self.parse_number('1') if swap else None,
-                'expiry': None,
-                'expiryDatetime': None,
-                'strike': None,
-                'optionType': None,
-                'precision': {
-                    'amount': int('8'),  # https://github.com/ccxt/ccxt/issues/7310
-                    'price': int('5'),
-                },
-                'limits': {
-                    'leverage': {
-                        'min': None,
-                        'max': None,
+            result.append(
+                {
+                    'id': f't{id}',
+                    'symbol': symbol,
+                    'base': base,
+                    'quote': quote,
+                    'settle': settle,
+                    'baseId': baseId,
+                    'quoteId': quoteId,
+                    'settleId': quoteId,
+                    'type': 'spot' if spot else 'swap',
+                    'spot': spot,
+                    'margin': margin,
+                    'swap': swap,
+                    'future': False,
+                    'option': False,
+                    'active': True,
+                    'contract': swap,
+                    'linear': True if swap else None,
+                    'inverse': False if swap else None,
+                    'contractSize': self.parse_number('1') if swap else None,
+                    'expiry': None,
+                    'expiryDatetime': None,
+                    'strike': None,
+                    'optionType': None,
+                    'precision': {
+                        'amount': int(
+                            '8'
+                        ),  # https://github.com/ccxt/ccxt/issues/7310
+                        'price': int('5'),
                     },
-                    'amount': {
-                        'min': self.parse_number(minOrderSizeString),
-                        'max': self.parse_number(maxOrderSizeString),
+                    'limits': {
+                        'leverage': {
+                            'min': None,
+                            'max': None,
+                        },
+                        'amount': {
+                            'min': self.parse_number(minOrderSizeString),
+                            'max': self.parse_number(maxOrderSizeString),
+                        },
+                        'price': {
+                            'min': self.parse_number('1e-8'),
+                            'max': None,
+                        },
+                        'cost': {
+                            'min': None,
+                            'max': None,
+                        },
                     },
-                    'price': {
-                        'min': self.parse_number('1e-8'),
-                        'max': None,
-                    },
-                    'cost': {
-                        'min': None,
-                        'max': None,
-                    },
-                },
-                'info': market,
-            })
+                    'info': market,
+                }
+            )
         return result
 
     def fetch_currencies(self, params={}):
@@ -696,7 +700,7 @@ class bitfinex2(Exchange):
             fee = self.safe_number(fees, 1)
             undl = self.safe_value(indexed['undl'], id, [])
             precision = '8'  # default precision, todo: fix "magic constants"
-            fid = 'f' + id
+            fid = f'f{id}'
             result[code] = {
                 'id': fid,
                 'uppercaseId': id,
@@ -785,7 +789,10 @@ class bitfinex2(Exchange):
         accountType = self.safe_string(accountsByType, requestedType, requestedType)
         if accountType is None:
             keys = list(accountsByType.keys())
-            raise ExchangeError(self.id + ' fetchBalance() type parameter must be one of ' + ', '.join(keys))
+            raise ExchangeError(
+                f'{self.id} fetchBalance() type parameter must be one of '
+                + ', '.join(keys)
+            )
         isDerivative = requestedType == 'derivatives'
         query = self.omit(params, 'type')
         response = self.privatePostAuthRWallets(query)
@@ -823,11 +830,16 @@ class bitfinex2(Exchange):
         fromId = self.safe_string(accountsByType, fromAccount)
         if fromId is None:
             keys = list(accountsByType.keys())
-            raise ArgumentsRequired(self.id + ' transfer() fromAccount must be one of ' + ', '.join(keys))
+            raise ArgumentsRequired(
+                f'{self.id} transfer() fromAccount must be one of '
+                + ', '.join(keys)
+            )
         toId = self.safe_string(accountsByType, toAccount)
         if toId is None:
             keys = list(accountsByType.keys())
-            raise ArgumentsRequired(self.id + ' transfer() toAccount must be one of ' + ', '.join(keys))
+            raise ArgumentsRequired(
+                f'{self.id} transfer() toAccount must be one of ' + ', '.join(keys)
+            )
         currency = self.currency(code)
         fromCurrencyId = self.convert_derivatives_id(currency, fromAccount)
         toCurrencyId = self.convert_derivatives_id(currency, toAccount)
@@ -866,8 +878,10 @@ class bitfinex2(Exchange):
         if error == 'error':
             message = self.safe_string(response, 2, '')
             # same message as in v1
-            self.throw_exactly_matched_exception(self.exceptions['exact'], message, self.id + ' ' + message)
-            raise ExchangeError(self.id + ' ' + message)
+            self.throw_exactly_matched_exception(
+                self.exceptions['exact'], message, f'{self.id} {message}'
+            )
+            raise ExchangeError(f'{self.id} {message}')
         return self.parse_transfer(response, currency)
 
     def parse_transfer(self, transfer, currency=None):
@@ -935,7 +949,7 @@ class bitfinex2(Exchange):
             start = len(currencyId) - 2
             isDerivativeCode = currencyId[start:] == 'F0'
             if not isDerivativeCode:
-                currencyId = currencyId + 'F0'
+                currencyId = f'{currencyId}F0'
         elif type != 'margin':
             currencyId = self.safe_string(underlying, 1, transferId)
         else:
@@ -949,7 +963,9 @@ class bitfinex2(Exchange):
         :param dict params: extra parameters specific to the bitfinex2 api endpoint
         :returns dict: An `order structure <https://docs.ccxt.com/en/latest/manual.html#order-structure>`
         """
-        raise NotSupported(self.id + ' fetchOrder() is not supported yet. Consider using fetchOpenOrder() or fetchClosedOrder() instead.')
+        raise NotSupported(
+            f'{self.id} fetchOrder() is not supported yet. Consider using fetchOpenOrder() or fetchClosedOrder() instead.'
+        )
 
     def fetch_order_book(self, symbol, limit=None, params={}):
         """
@@ -1371,11 +1387,11 @@ class bitfinex2(Exchange):
                     postOnly = True
         price = self.safe_string(order, 16)
         stopPrice = None
-        if (orderType == 'EXCHANGE STOP') or (orderType == 'EXCHANGE STOP LIMIT'):
+        if orderType in ['EXCHANGE STOP', 'EXCHANGE STOP LIMIT']:
             price = None
             stopPrice = self.safe_number(order, 16)
-            if orderType == 'EXCHANGE STOP LIMIT':
-                price = self.safe_string(order, 19)
+        if orderType == 'EXCHANGE STOP LIMIT':
+            price = self.safe_string(order, 19)
         status = None
         statusString = self.safe_string(order, 13)
         if statusString is not None:
@@ -1471,9 +1487,13 @@ class bitfinex2(Exchange):
         fok = ((orderType == 'EXCHANGE FOK') or (timeInForce == 'FOK'))
         postOnly = (postOnlyParam or (timeInForce == 'PO'))
         if (ioc or fok) and (price is None):
-            raise InvalidOrder(self.id + ' createOrder() requires a price argument with IOC and FOK orders')
+            raise InvalidOrder(
+                f'{self.id} createOrder() requires a price argument with IOC and FOK orders'
+            )
         if (ioc or fok) and exchangeMarket:
-            raise InvalidOrder(self.id + ' createOrder() does not allow market IOC and FOK orders')
+            raise InvalidOrder(
+                f'{self.id} createOrder() does not allow market IOC and FOK orders'
+            )
         if (orderType != 'MARKET') and (not exchangeMarket) and (not exchangeStop):
             request['price'] = self.price_to_precision(symbol, price)
         if stopLimit or stopMarket:
@@ -1481,7 +1501,7 @@ class bitfinex2(Exchange):
             request['price'] = self.price_to_precision(symbol, stopPrice)
             if stopMarket:
                 request['type'] = 'EXCHANGE STOP'
-            elif stopLimit:
+            else:
                 request['type'] = 'EXCHANGE STOP LIMIT'
                 request['price_aux_limit'] = self.price_to_precision(symbol, price)
         if ioc:
@@ -1551,7 +1571,9 @@ class bitfinex2(Exchange):
         if status != 'SUCCESS':
             errorCode = response[5]
             errorText = response[7]
-            raise ExchangeError(self.id + ' ' + response[6] + ': ' + errorText + '(#' + errorCode + ')')
+            raise ExchangeError(
+                f'{self.id} {response[6]}: {errorText}' + '(#' + errorCode + ')'
+            )
         orders = self.safe_value(response, 4, [])
         order = self.safe_value(orders, 0)
         return self.parse_order(order, market)
@@ -1583,7 +1605,9 @@ class bitfinex2(Exchange):
         if cid is not None:
             cidDate = self.safe_value(params, 'cidDate')  # client order id date
             if cidDate is None:
-                raise InvalidOrder(self.id + " canceling an order by clientOrderId('cid') requires both 'cid' and 'cid_date'('YYYY-MM-DD')")
+                raise InvalidOrder(
+                    f"{self.id} canceling an order by clientOrderId('cid') requires both 'cid' and 'cid_date'('YYYY-MM-DD')"
+                )
             request = {
                 'cid': cid,
                 'cid_date': cidDate,
@@ -1611,7 +1635,7 @@ class bitfinex2(Exchange):
         orders = self.fetch_open_orders(symbol, None, None, self.extend(request, params))
         order = self.safe_value(orders, 0)
         if order is None:
-            raise OrderNotFound(self.id + ' order ' + id + ' not found')
+            raise OrderNotFound(f'{self.id} order {id} not found')
         return order
 
     def fetch_closed_order(self, id, symbol=None, params={}):
@@ -1628,7 +1652,7 @@ class bitfinex2(Exchange):
         orders = self.fetch_closed_orders(symbol, None, None, self.extend(request, params))
         order = self.safe_value(orders, 0)
         if order is None:
-            raise OrderNotFound(self.id + ' order ' + id + ' not found')
+            raise OrderNotFound(f'{self.id} order {id} not found')
         return order
 
     def fetch_open_orders(self, symbol=None, since=None, limit=None, params={}):
@@ -1765,7 +1789,9 @@ class bitfinex2(Exchange):
         :returns [dict]: a list of `trade structures <https://docs.ccxt.com/en/latest/manual.html#trade-structure>`
         """
         if symbol is None:
-            raise ArgumentsRequired(self.id + ' fetchOrderTrades() requires a symbol argument')
+            raise ArgumentsRequired(
+                f'{self.id} fetchOrderTrades() requires a symbol argument'
+            )
         self.load_markets()
         market = self.market(symbol)
         orderId = int(id)
